@@ -128,6 +128,10 @@ fi
 mkdir -p "$ORG"
 
 # ── worker (exported, run in parallel by xargs) ─────────────────────────────
+# NO_COLOR tells gh/git's termenv-based color detection to skip its terminal
+# probe entirely. Without it, each parallel process queries the tty directly
+# (bypassing stdin/stdout redirection) and replies can interleave, leaking
+# raw OSC/CPR escape sequences into the output.
 sync_repo() {
   local org="$1" name="$2" dir="$1/$2"
   if [[ -d "$dir/.git" ]]; then
@@ -146,6 +150,7 @@ sync_repo() {
 }
 export -f sync_repo
 export ORG GRN YLW RED RST DIM
+export NO_COLOR=1
 
 printf '%s\n' "${repos[@]}" \
   | xargs -P"$JOBS" -I{} bash -c 'sync_repo "$ORG" "$1"' _ {}
