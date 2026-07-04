@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+#
+# gh-orgsync — clone or update every repo in a GitHub org into ./<org>/
+#
+# A gh CLI extension. Invoke as:  gh orgsync <org>
+#
+set -euo pipefail
+
+readonly VERSION="1.0.0"
+
+# ── colors (disabled if not a tty) ──────────────────────────────────────────
+if [[ -t 1 ]]; then
+  BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GRN=$'\033[32m'
+  YLW=$'\033[33m'; BLU=$'\033[34m'; RST=$'\033[0m'
+else
+  BOLD=""; DIM=""; RED=""; GRN=""; YLW=""; BLU=""; RST=""
+fi
+
+# ── defaults ────────────────────────────────────────────────────────────────
+JOBS=8
+LIMIT=1000
+SOURCE_ONLY=0   # -s: skip forks
+DRY_RUN=0
+
+banner() {
+  printf '%s' "$BLU"
+  cat <<'EOF'
+  ___  _ __ __ _ ___ _   _ _ __   ___
+ / _ \| '__/ _` / __| | | | '_ \ / __|
+| (_) | | | (_| \__ \ |_| | | | | (__
+ \___/|_|  \__, |___/\__, |_| |_|\___|
+           |___/     |___/
+EOF
+  printf '%s  clone or sync a whole GitHub org  %sv%s%s\n\n' "$DIM" "$RST$DIM" "$VERSION" "$RST"
+}
+
+usage() {
+  banner
+  cat <<EOF
+${BOLD}USAGE${RST}
+  gh orgsync [options] <org>
+
+${BOLD}ARGUMENTS${RST}
+  <org>            GitHub organization (or user) name
+
+${BOLD}OPTIONS${RST}
+  -j, --jobs N     parallel clones/pulls        (default: ${JOBS})
+  -l, --limit N    max repos to fetch           (default: ${LIMIT})
+  -s, --source     skip forks (sources only)
+  -n, --dry-run    list what would happen, do nothing
+  -h, --help       show this help
+  -V, --version    print version
+
+${BOLD}BEHAVIOR${RST}
+  Repos land in ./<org>/. Existing checkouts are fast-forwarded
+  (git pull --ff-only); missing ones are cloned. Re-running is safe.
+
+${BOLD}EXAMPLES${RST}
+  gh orgsync anthropics
+  gh orgsync -j16 -s my-company
+  gh orgsync --dry-run some-org
+
+${BOLD}REQUIRES${RST}
+  gh (authenticated: gh auth login), git
+EOF
+}
+
+die() { printf '%serror:%s %s\n' "$RED" "$RST" "$*" >&2; exit 1; }
+
+# ── arg parsing ─────────────────────────────────────────────────────────────
+ORG=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -j|--jobs)    JOBS="${2:?}"; shift 2 ;;
+    -l|--limit)   LIMIT="${2:?}"; shift 2 ;;
+    -s|--source)  SOURCE_ONLY=1; shift ;;
+    -n|--dry-run) DRY_RUN=1; shift ;;
+    -h|--help)    usage; exit 0 ;;
+    -V|--version) printf 'gh-orgsync %s\n' "$VERSION"; exit 0 ;;
+    -j*)          JOBS="${1#-j}"; shift ;;
+    -l*)          LIMIT="${1#-l}"; shift ;;
+    --)           shift; break ;;
+    -*)           die "unknown option: $1 (try --help)" ;;
+    *)            [[ -z "$ORG" ]] || die "unexpected argument: $1"; ORG="$1"; shift ;;
+  esac
+done
+[[ -n "$ORG" ]] || { usage; exit 1; }
+[[ "$JOBS"  =~ ^[0-9]+$ && "$JOBS"  -gt 0 ]] || die "--jobs must be a positive integer"
+[[ "$LIMIT" =~ ^[0-9]+$ && "$LIMIT" -gt 0 ]] || die "--limit must be a positive integer"
+
+# ── preflight ───────────────────────────────────────────────────────────────
+command -v gh  >/dev/null || die "gh not found — https://cli.github.com"
+command -v git >/dev/null || die "git not found"
+gh auth status >/dev/null 2>&1 || die "gh not authenticated — run: gh auth login"
+
+banner
+
+# ── fetch repo list ─────────────────────────────────────────────────────────
+list_args=(repo list "$ORG" --limit "$LIMIT" --json name -q '.[].name')
+[[ "$SOURCE_ONLY" -eq 1 ]] && list_args+=(--source)
+
+printf '%s▸%s querying %s%s%s …\n' "$BLU" "$RST" "$BOLD" "$ORG" "$RST"
+mapfile -t repos < <(gh "${list_args[@]}") \
+  || die "could not list repos for '$ORG' (does it exist? are you authorized?)"
+
+count=${#repos[@]}
+[[ "$count" -gt 0 ]] || die "no repos found for '$ORG'"
+printf '%s▸%s %s%d%s repo(s) found; target dir %s./%s/%s\n\n' \
+  "$BLU" "$RST" "$BOLD" "$count" "$RST" "$DIM" "$ORG" "$RST"
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  for r in "${repos[@]}"; do
+    if [[ -d "$ORG/$r/.git" ]]; then
+      printf '  %spull%s   %s\n' "$YLW" "$RST" "$r"
+    else
+      printf '  %sclone%s  %s\n' "$GRN" "$RST" "$r"
+    fi
+  done
+  printf '\n%sdry run — nothing changed.%s\n' "$DIM" "$RST"
+  exit 0
+fi
+
+mkdir -p "$ORG"
+
+# ── worker (exported, run in parallel by xargs) ─────────────────────────────
+sync_repo() {
+  local org="$1" name="$2" dir="$1/$2"
+  if [[ -d "$dir/.git" ]]; then
+    if git -C "$dir" pull --ff-only --quiet 2>/dev/null; then
+      printf '  %s✓ pulled%s  %s\n' "$GRN" "$RST" "$name"
+    else
+      printf '  %s! skipped%s %s %s(diverged or dirty)%s\n' "$YLW" "$RST" "$name" "$DIM" "$RST"
+    fi
+  else
+    if gh repo clone "$org/$name" "$dir" -- --quiet 2>/dev/null; then
+      printf '  %s✓ cloned%s  %s\n' "$GRN" "$RST" "$name"
+    else
+      printf '  %s✗ failed%s  %s\n' "$RED" "$RST" "$name"
+    fi
+  fi
+}
+export -f sync_repo
+export ORG GRN YLW RED RST DIM
+
+printf '%s\n' "${repos[@]}" \
+  | xargs -P"$JOBS" -I{} bash -c 'sync_repo "$ORG" "$1"' _ {}
+
+printf '\n%s▸%s done — %s%d%s repo(s) under %s./%s/%s\n' \
+  "$BLU" "$RST" "$BOLD" "$count" "$RST" "$DIM" "$ORG" "$RST"
