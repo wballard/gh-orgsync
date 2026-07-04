@@ -131,13 +131,13 @@ mkdir -p "$ORG"
 sync_repo() {
   local org="$1" name="$2" dir="$1/$2"
   if [[ -d "$dir/.git" ]]; then
-    if git -C "$dir" pull --ff-only --quiet 2>/dev/null; then
+    if git -C "$dir" pull --ff-only --quiet </dev/null 2>/dev/null; then
       printf '  %s✓ pulled%s  %s\n' "$GRN" "$RST" "$name"
     else
       printf '  %s! skipped%s %s %s(diverged or dirty)%s\n' "$YLW" "$RST" "$name" "$DIM" "$RST"
     fi
   else
-    if gh repo clone "$org/$name" "$dir" -- --quiet 2>/dev/null; then
+    if gh repo clone "$org/$name" "$dir" -- --quiet </dev/null 2>/dev/null; then
       printf '  %s✓ cloned%s  %s\n' "$GRN" "$RST" "$name"
     else
       printf '  %s✗ failed%s  %s\n' "$RED" "$RST" "$name"
