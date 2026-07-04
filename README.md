@@ -73,7 +73,7 @@ gh orgsync --dry-run some-org  # show the plan, change nothing
 
 - [`gh`](https://cli.github.com) — authenticated (`gh auth login`)
 - `git`
-- `bash` 4+ (for `mapfile`)
+- `bash` (macOS's stock 3.2 works fine)
 
 ## Upgrade / remove
 

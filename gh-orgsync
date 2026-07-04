@@ -100,8 +100,13 @@ list_args=(repo list "$ORG" --limit "$LIMIT" --json name -q '.[].name')
 [[ "$SOURCE_ONLY" -eq 1 ]] && list_args+=(--source)
 
 printf '%s▸%s querying %s%s%s …\n' "$BLU" "$RST" "$BOLD" "$ORG" "$RST"
-mapfile -t repos < <(gh "${list_args[@]}") \
+repo_list_output=$(gh "${list_args[@]}") \
   || die "could not list repos for '$ORG' (does it exist? are you authorized?)"
+
+repos=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && repos+=("$line")
+done <<< "$repo_list_output"
 
 count=${#repos[@]}
 [[ "$count" -gt 0 ]] || die "no repos found for '$ORG'"
