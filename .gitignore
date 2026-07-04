@@ -1,6 +1,7 @@
 # cloned org folders, if you test in-repo
 /*/
 !.github/
+!demo/
 
 # editor / OS cruft
 .DS_Store

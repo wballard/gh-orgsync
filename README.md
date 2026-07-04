@@ -2,26 +2,7 @@
 
 A [GitHub CLI](https://cli.github.com) extension that clones or updates **every repo in an org** into a local folder named for that org. Re-running is safe and idempotent — missing repos get cloned, existing ones get fast-forwarded.
 
-```
-$ gh orgsync anthropics
-
-  ___  _ __ __ _ ___ _   _ _ __   ___
- / _ \| '__/ _` / __| | | | '_ \ / __|
-| (_) | | | (_| \__ \ |_| | | | | (__
- \___/|_|  \__, |___/\__, |_| |_|\___|
-           |___/     |___/
-  clone or sync a whole GitHub org  v1.0.0
-
-▸ querying anthropics …
-▸ 42 repo(s) found; target dir ./anthropics/
-
-  ✓ cloned   claude-code
-  ✓ pulled   anthropic-sdk-python
-  ! skipped  some-fork (diverged or dirty)
-  ...
-
-▸ done — 42 repo(s) under ./anthropics/
-```
+![gh orgsync demo: cloning octocat's repos, then re-running to show idempotent pulls](demo/gh-orgsync.gif)
 
 ## Install
 
@@ -74,6 +55,15 @@ gh orgsync --dry-run some-org  # show the plan, change nothing
 - [`gh`](https://cli.github.com) — authenticated (`gh auth login`)
 - `git`
 - `bash` (macOS's stock 3.2 works fine)
+
+## Demo
+
+The GIF above is recorded with [VHS](https://github.com/charmbracelet/vhs). To re-record after a behavior change:
+
+```bash
+brew install vhs
+vhs demo/gh-orgsync.tape
+```
 
 ## Upgrade / remove
 
