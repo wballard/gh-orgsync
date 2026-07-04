@@ -26,13 +26,13 @@ $ gh orgsync anthropics
 ## Install
 
 ```bash
-gh extension install <your-github-username>/gh-orgsync
+gh extension install wballard/gh-orgsync
 ```
 
 Or from a local clone:
 
 ```bash
-git clone https://github.com/<you>/gh-orgsync
+git clone https://github.com/wballard/gh-orgsync
 gh extension install ./gh-orgsync
 ```
 
